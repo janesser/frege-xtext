@@ -1,0 +1,155 @@
+grammar de.esserjan.edu.xtext.FregeLang with org.eclipse.xtext.common.Terminals
+
+generate fregeLang "http://www.esserjan.de/edu/xtext/FregeLang"
+
+// see https://www.haskell.org/onlinereport/syntax-iso.html
+Program:
+	(prg+=(lexeme | whitespace))* //
+;
+
+lexeme:
+	qvarid | qconid | qvarsym | qconsym |
+	literal | SPECIAL | RESERVEDOP | RESERVEDID;
+
+literal:
+	INTEGER | FLOAT | CHAR | hstring;
+
+terminal SPECIAL:
+	'(' | ')' | ',' | ';' | '[' | ']' | '`' | '{' | '}';
+
+whitespace:
+	whitestuff+;
+
+whitestuff:
+	whitechar | COMMENT | NCOMMENT;
+
+whitechar:
+	newline | VERTAB | SPACE | TAB | UNI_WHITE;
+
+newline:
+	RETURN LINEFEED | RETURN | LINEFEED | FORMFEED;
+
+terminal RETURN:
+	'\r';
+
+terminal LINEFEED:
+	'\n';
+
+terminal FORMFEED:
+	'\f';
+
+terminal VERTAB:
+	'%0B'; // deprecated 
+terminal SPACE:
+	' ';
+
+terminal TAB:
+	'\t';
+	// https://www.cs.tut.fi/~jkorpela/chars/spaces.html
+terminal UNI_WHITE:
+	'\u0020' // SPACE 
+	| '\u00A0' // NO-BREAK SPACE
+	| '\u1680' // OGHAM SPACE MARK
+	| '\u180E' // MONGOLIAN VOWEL SEPARATOR
+	| '\u2000' // EN QUAD
+	| '\u2001' // EM QUAD
+	| '\u2002' // EN SPACE
+	| '\u2003' // EM SPACE
+	| '\u2004' // THREE-PER-EM SPACE
+	| '\u2005' // FOUR-PER-EM SPACE
+	| '\u2006' // SIX-PER-EM SPACE
+	| '\u2007' // FIGURE SPACE
+	| '\u2008' // PUNCTUATION SPACE
+	| '\u2009' // THIN SPACE
+	| '\u200A' // HAIR SPACE
+	| '\u200B' // ZERO WIDTH SPACE
+	| '\u202F' // NARROW NO-BREAK SPACE
+	| '\u205F' // MEDIUM MATHEMATICAL SPACE
+	| '\u3000' // IDEOGRAPHIC SPACE
+	| '\uFEFF' // ZERO WIDTH NO-BREAK SPACE
+;
+
+terminal COMMENT:
+	DASHES->LINEFEED;
+
+terminal DASHES:
+	'--' '-'*;
+
+terminal NCOMMENT:
+	OPENCOM->CLOSECOM;
+
+terminal OPENCOM:
+	'{-';
+
+terminal CLOSECOM:
+	'-}';
+
+varid hidden(RESERVEDID):
+	SMALL (SMALL | LARGE | DIGIT | '\'')*;
+
+conid:
+	LARGE (SMALL | LARGE | DIGIT | '\'')*;
+
+varsym hidden(DASHES, RESERVEDOP): // FIXME deny instead of hide
+	SYMBOL (SYMBOL | ':')*;
+
+consym hidden(RESERVEDOP): // FIXME deny instead of hide
+	':' (SYMBOL | ':')*;
+
+terminal SYMBOL /*hidden(RESERVEDOP)*/: // TODO all unicode symbols
+	'!' | '#' | '$' | '%' | '&' | '*' | '+' | '.' | '/' | '<' | '=' | '>' | '?' | '@' | '\\' | '^' | '|' | '-' | '~';
+
+terminal RESERVEDOP:
+	'..' | ':' | '::' | '=' | '\\' | '|' | '<-' | '->' | '@' | '~' | '=>';
+
+terminal RESERVEDID:
+	'case' | 'class' | 'data' | 'default' | 'deriving' | 'do' | 'else' | 'if' | 'import' | 'in' | 'infix' | 'infixl' |
+	'infixr' | 'instance' | 'let' | 'module' | 'newtype' | 'of' | 'then' | 'type' | 'where' | '_';
+
+terminal DIGIT:
+	('0'..'9');
+
+terminal SMALL:
+	('a'..'z'); // TODO all lower-case unicode
+terminal LARGE:
+	('A'..'Z'); // TODO all upper-case unicode
+
+tyvar:
+	varid; // type variable
+tycon:
+	conid; // type constant
+tycls:
+	conid; // type class
+modid:
+	conid; // module
+qvarid:
+	(modid '.')? varid;
+
+qconid:
+	(modid '.')? conid;
+
+qtycon:
+	(modid '.')? tycon;
+
+qtycls:
+	(modid '.')? tycls;
+
+qvarsym:
+	(modid '.')? varsym;
+
+qconsym:
+	(modid '.')? consym;
+
+terminal INTEGER:
+	INT; // TODO octal + hex
+terminal FLOAT:
+	INT '.' INT; // TODO exponent
+terminal CHAR:
+	'\'' ('a'..'z' | 'A'..'Z') '\''; // TODO escaping and special chars
+hstring:
+	'\"' (CHAR | gap)* '\"';
+
+gap:
+	whitechar+;
+
+// EOF

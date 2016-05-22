@@ -1,0 +1,18 @@
+# eclipse files
+.settings
+.project
+.classpath
+.launch
+
+# xtext+xtend temporary files
+src-gen
+xtend-gen
+generated
+*.xtendbin
+
+# maven 
+target
+
+# misc
+*._trace
+*_gen
