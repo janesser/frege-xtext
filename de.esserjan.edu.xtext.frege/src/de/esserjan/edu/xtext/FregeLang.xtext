@@ -1,102 +1,55 @@
 grammar de.esserjan.edu.xtext.FregeLang with org.eclipse.xtext.common.Terminals
 
 generate fregeLang "http://www.esserjan.de/edu/xtext/FregeLang"
+import "http://www.eclipse.org/emf/2002/Ecore" as ecore
 
-// see https://www.haskell.org/onlinereport/syntax-iso.html
+/**
+ * <h3>Resources:</h3>
+ * <p>
+ *  <ol>
+ *   <li>
+ *    <a href="https://www.haskell.org/onlinereport/syntax-iso.html">The Haskell 98 Report - 9 Syntax Reference</a>
+ *   </li>
+ *   <li>
+ *    <a href="https://www.haskell.org/onlinereport/haskell2010/haskellch10.html">Haskell 2010 - Chapter 10 Syntax Reference</a>
+ *   </li>
+ *  </ol>
+ * </p>
+ */
+
+/* 
+ * <p>9.2 Lexical Syntax</p>
+ */
 Program:
-	(prg+=(lexeme | whitespace))* //
+	prg+=(lexeme | whitespace) //
 ;
 
-lexeme:
-	qvarid | qconid | qvarsym | qconsym |
-	literal | SPECIAL | RESERVEDOP | RESERVEDID;
+lexeme hidden(WS):
+	RESERVEDOP | RESERVEDID | SPECIAL | ((modid '.')? (VARID | CONID)) | literal;
 
 literal:
-	INTEGER | FLOAT | CHAR | hstring;
+	INTEGER | FLOAT | CHAR | HSTRING;
 
 terminal SPECIAL:
 	'(' | ')' | ',' | ';' | '[' | ']' | '`' | '{' | '}';
 
-whitespace:
-	whitestuff+;
-
-whitestuff:
-	whitechar | COMMENT | NCOMMENT;
-
-whitechar:
-	newline | VERTAB | SPACE | TAB | UNI_WHITE;
-
-newline:
-	RETURN LINEFEED | RETURN | LINEFEED | FORMFEED;
-
-terminal RETURN:
-	'\r';
-
-terminal LINEFEED:
-	'\n';
-
-terminal FORMFEED:
-	'\f';
-
-terminal VERTAB:
-	'%0B'; // deprecated 
-terminal SPACE:
-	' ';
-
-terminal TAB:
-	'\t';
-	// https://www.cs.tut.fi/~jkorpela/chars/spaces.html
-terminal UNI_WHITE:
-	'\u0020' // SPACE 
-	| '\u00A0' // NO-BREAK SPACE
-	| '\u1680' // OGHAM SPACE MARK
-	| '\u180E' // MONGOLIAN VOWEL SEPARATOR
-	| '\u2000' // EN QUAD
-	| '\u2001' // EM QUAD
-	| '\u2002' // EN SPACE
-	| '\u2003' // EM SPACE
-	| '\u2004' // THREE-PER-EM SPACE
-	| '\u2005' // FOUR-PER-EM SPACE
-	| '\u2006' // SIX-PER-EM SPACE
-	| '\u2007' // FIGURE SPACE
-	| '\u2008' // PUNCTUATION SPACE
-	| '\u2009' // THIN SPACE
-	| '\u200A' // HAIR SPACE
-	| '\u200B' // ZERO WIDTH SPACE
-	| '\u202F' // NARROW NO-BREAK SPACE
-	| '\u205F' // MEDIUM MATHEMATICAL SPACE
-	| '\u3000' // IDEOGRAPHIC SPACE
-	| '\uFEFF' // ZERO WIDTH NO-BREAK SPACE
-;
+whitespace hidden(WS):
+	COMMENT | NCOMMENT;
 
 terminal COMMENT:
-	DASHES->LINEFEED;
+	DASHES->'\n';
 
-terminal DASHES:
+terminal fragment DASHES:
 	'--' '-'*;
 
 terminal NCOMMENT:
-	OPENCOM->CLOSECOM;
+	'{-'->'-}' //
+;
 
-terminal OPENCOM:
-	'{-';
-
-terminal CLOSECOM:
-	'-}';
-
-varid hidden(RESERVEDID):
-	SMALL (SMALL | LARGE | DIGIT | '\'')*;
-
-conid:
-	LARGE (SMALL | LARGE | DIGIT | '\'')*;
-
-varsym hidden(DASHES, RESERVEDOP): // FIXME deny instead of hide
-	SYMBOL (SYMBOL | ':')*;
-
-consym hidden(RESERVEDOP): // FIXME deny instead of hide
-	':' (SYMBOL | ':')*;
-
-terminal SYMBOL /*hidden(RESERVEDOP)*/: // TODO all unicode symbols
+/*
+ * // hidden(RESERVEDOP) FIXME deny instead of hide TODO all unicode symbols
+ */
+terminal fragment SYMBOL:
 	'!' | '#' | '$' | '%' | '&' | '*' | '+' | '.' | '/' | '<' | '=' | '>' | '?' | '@' | '\\' | '^' | '|' | '-' | '~';
 
 terminal RESERVEDOP:
@@ -106,50 +59,65 @@ terminal RESERVEDID:
 	'case' | 'class' | 'data' | 'default' | 'deriving' | 'do' | 'else' | 'if' | 'import' | 'in' | 'infix' | 'infixl' |
 	'infixr' | 'instance' | 'let' | 'module' | 'newtype' | 'of' | 'then' | 'type' | 'where' | '_';
 
-terminal DIGIT:
-	('0'..'9');
+terminal fragment DIGIT:
+	'0'..'9' //
+;
 
-terminal SMALL:
-	('a'..'z'); // TODO all lower-case unicode
-terminal LARGE:
-	('A'..'Z'); // TODO all upper-case unicode
+terminal fragment SMALL:
+	'a'..'z' // TODO all lower-case unicode
+;
 
-tyvar:
-	varid; // type variable
-tycon:
-	conid; // type constant
-tycls:
-	conid; // type class
+terminal fragment LARGE:
+	'A'..'Z' // TODO all upper-case unicode
+;
+
+/*
+ * variables, type variables
+ * 
+ * not RESERVEDOP
+ */
+terminal VARID:
+	SMALL (SMALL | LARGE | DIGIT | '\'')* //
+;
+
+/*
+ * type constructors, type classes
+ */
+terminal CONID:
+	LARGE (SMALL | LARGE | DIGIT | '\'')* //
+;
+
 modid:
-	conid; // module
-qvarid:
-	(modid '.')? varid;
+	CONID ('.' modid)* // module 
+;
 
-qconid:
-	(modid '.')? conid;
+/*
+ * not RESERVEDOP | DASHES
+ */
+terminal VARSYM:
+	SYMBOL (SYMBOL | ':')* //
+;
 
-qtycon:
-	(modid '.')? tycon;
+/*
+ * not RESERVEDOP 
+ */
+terminal CONSYM:
+	':' (SYMBOL | ':')*;
 
-qtycls:
-	(modid '.')? tycls;
+terminal INTEGER returns ecore::EBigInteger: // octal + hex
+	INT | '0x' (DIGIT | 'a'..'f' | 'A'..'F')+ | '0o' ('0'..'7')+;
 
-qvarsym:
-	(modid '.')? varsym;
+terminal FLOAT returns ecore::EBigDecimal:
+	(('+' | '-')? INT ('.' INT)? ('e' | 'E') ('+' | '-')? INT);
 
-qconsym:
-	(modid '.')? consym;
+terminal CHAR returns ecore::EChar: // escaping and special chars
+	'\'' ('\\' . | 'a'..'z' | 'A'..'Z') '\'';
 
-terminal INTEGER:
-	INT; // TODO octal + hex
-terminal FLOAT:
-	INT '.' INT; // TODO exponent
-terminal CHAR:
-	'\'' ('a'..'z' | 'A'..'Z') '\''; // TODO escaping and special chars
-hstring:
-	'\"' (CHAR | gap)* '\"';
+terminal HSTRING returns ecore::EString:
+	'"' ('\\' . | 'a'..'z' | 'A'..'Z' | GAP)* '"';
 
-gap:
-	whitechar+;
+terminal fragment GAP:
+	WS+ //
+;
 
 // EOF

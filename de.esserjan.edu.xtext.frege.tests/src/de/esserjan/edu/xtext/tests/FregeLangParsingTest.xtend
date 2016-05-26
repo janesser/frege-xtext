@@ -4,29 +4,37 @@
 package de.esserjan.edu.xtext.tests
 
 import com.google.inject.Inject
+import de.esserjan.edu.xtext.fregeLang.Program
 import org.eclipse.xtext.junit4.InjectWith
 import org.eclipse.xtext.junit4.XtextRunner
 import org.eclipse.xtext.junit4.util.ParseHelper
-import org.junit.Assert
 import org.junit.Test
 import org.junit.runner.RunWith
-import de.esserjan.edu.xtext.fregeLang.Program
+
+import static org.junit.Assert.*
 
 @RunWith(XtextRunner)
 @InjectWith(FregeLangInjectorProvider)
-class FregeLangParsingTest{
+class FregeLangParsingTest {
+
+//	@Inject
+//	ParseHelper<Module> parseHelper;
 
 	@Inject
-	ParseHelper<Program> parseHelper;
+	ParseHelper<Program> programParser;
 
-	@Test 
-	def void loadModel() {
-		val result = parseHelper.parse('''
-			a = 123
-			b = 234
-			a + b
-		''')
-		Assert.assertNotNull(result)
-	}
+	@Test
+	def void testHelloWorld() {
+		val result = programParser.parse('''
+		module First where
+		
+		main = println "Hello world"		''')
 
+		assertTrue(result.prg.contains('First'))
+//		assertEquals(
+//			"module 'First' expected.",
+//			"First",
+//			result.moduleId
+//		)
+ 	}
 }
