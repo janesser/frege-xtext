@@ -16,22 +16,208 @@ import "http://www.eclipse.org/emf/2002/Ecore" as ecore
  *  </ol>
  * </p>
  */
-
-/* 
- * <p>9.2 Lexical Syntax</p>
+/*
+ * <p>9.5 Context-Free Syntax</p>
  */
-Program:
-	prg+=(lexeme | whitespace) //
+Module hidden(WS, COMMENT, NCOMMENT):
+	'module' moduleId=Modid ('(' exports+=Export (',' exports+=Export)* ')')? 'where' (body+=Body)*;
+
+Export hidden(WS, COMMENT, NCOMMENT):
+	(VARID | VARSYM | CONID | 'module' Modid);
+
+Body hidden(WS, COMMENT, NCOMMENT):
+	Impdecl | Topdecl;
+
+Impdecl hidden(WS, COMMENT, NCOMMENT):
+	'import' 'qualified'? moduleId=Modid ('as' alias=Modid)? //
+	( //
+	('(' imports+=Impsymb (',' imports+=Impsymb)* ')')? //
+	| ('hiding' '(' hidings+=Impsymb (',' hidings+=Impsymb)* ')')? //
+);
+
+Impsymb hidden(WS, COMMENT, NCOMMENT):
+	symbolId=(VARID | CONID);
+
+Topdecl hidden(WS, COMMENT, NCOMMENT):
+	Typedecl | //
+	Datadecl | //
+	Newtype | //
+	Class | //
+	'__instance' | //
+	'__default' | //
+	'__foreign' | //
+	Decl //
 ;
 
-lexeme hidden(WS):
-	RESERVEDOP | RESERVEDID | SPECIAL | ((modid '.')? (VARID | CONID)) | literal;
+Newtype hidden(WS, COMMENT, NCOMMENT):
+	'newtype' (context=Class '=>')? simpleType=CONID // 
+	'=' con=CONID (atype=Atype | '{' var=VARID '::' varType=Atype '}') //
+	deriving=Deriving? //
+;
 
-literal:
+Typedecl hidden(WS, COMMENT, NCOMMENT):
+	'type' simpleType=CONID typeVars+=VARID* '=' type=Type;
+
+Datadecl hidden(WS, COMMENT, NCOMMENT):
+	'data' (context+=Class '=>')? simpleType=CONID typeVars+=VARID* // 
+	('=' (constrs+=Constr ('|' constrs+=Constr)*))? //
+	deriving=Deriving? //
+;
+
+Deriving hidden(WS, COMMENT, NCOMMENT):
+	'deriving' '(' dclasses+=CONID (',' dclasses+=CONID)* ')';
+
+Constr hidden(WS, COMMENT, NCOMMENT):
+	{Constr} //
+	con=CONID //
+	| (con=CONID ('!'? conTypes+=Atype)+) //
+	| ('(' '!'? lType=Atype ')' conop=CONID '(' '!'? rType=Atype ')') //
+	| (con=CONID '{' fieldDecls+=FieldDecl (',' fieldDecls+=FieldDecl)* '}') //
+;
+
+FieldDecl hidden(WS, COMMENT, NCOMMENT):
+	fieldVars+=VARID (',' fieldVars+=VARID)* '::' '!'? fieldType=Type;
+
+Class hidden(WS, COMMENT, NCOMMENT): //
+	'class' tycls=CONID tyvar=VARID ('where' cdecls+=Cdecl (';' cdecls+=Cdecl)*)? //
+;
+
+Cdecl:
+	'__cdecl';
+
+Decl hidden(WS, COMMENT, NCOMMENT):
+	gendecl=Gendecl | (funlhs=Funlhs | pat=Pat) rhs=Rhs //
+;
+
+Funlhs:
+	var=VARID apats+=Apat+ //
+	//	TODO Pat vs Funlhs both starting with Pat/Lpat | lpat=Pat varop=Varop rpat=Pat //
+	//	TODO make right-recursive | ('__funlhs') apats+=Apat+ //
+;
+
+Pat:
+	lpat=Lpat (qconop=Qconop rpat=Pat)?;
+
+Lpat:
+	apat=Apat // 
+	//	| '-' (float=FLOAT | integer=INTEGER) // 
+	//	| gcon=Gcon apats+=Apat+ //
+;
+
+Apat hidden(WS, COMMENT, NCOMMENT):
+	var=VARID //
+	//	| gcon=Gcon // 
+	| qcon=CONID '{' fpats+=Fpat '}' // 
+	//	| literal=LITERAL //
+	| '_' //
+	//	| '(' pats+=Pat ')' //
+	//	| '[' pats+=Pat ']' //
+	//	| '~' apat=Apat // 
+;
+
+Fpat:
+	'__fpat';
+
+Gendecl:
+	'__gendecl';
+
+Rhs hidden(WS, COMMENT, NCOMMENT):
+	('=' exp=Exp | gdrhs=Gdrhs) ('where' decls+=Decl+)? //
+;
+
+Gdrhs:
+	'__gdrhs';
+
+Exp hidden(WS, COMMENT, NCOMMENT):
+	infixExp=Infixexp ('::' (context=Class '=>')? type=Atype)?;
+
+Infixexp: //
+	lexp=Lexp (qop=Qop infixExp=Infixexp)? // 
+;
+
+Lexp hidden(WS, COMMENT, NCOMMENT): //
+	'\\' apat+=Apat '->' exp=Exp // 
+	| 'let' decls+=Decl 'in' exp=Exp //
+	| 'if' ifExp=Exp ';'? 'then' exp=Exp ';'? 'else' elseExp=Exp //
+	| 'case' exp=Exp 'of' '{' alts+=Alt+ '}' //
+	| 'do' '{' stmts+=Stmt+ '}' //
+	| fexps+=Aexp //
+;
+
+Aexp hidden(WS, COMMENT, NCOMMENT):
+	literal=LITERAL //
+	| qvar=Qvarid //
+	//	| gcon=Gcon //
+	//	| '(' tupleExps+=Exp (',' tupleExps+=Exp)* ')' // parenthesized expression or tuple
+	//	| '[' listExps+=Exp (',' listExps+=Exp)* ']' // list
+	//	| '[' aritExps+=Exp fromExp=Exp? '..' toExp=Exp? ']' // arithmetic sequence
+	//	| '[' exp=Exp '|' quals+=Qual+ ']' // list comprehension
+	//	| '(' infixExp=Infixexp qop=Qop ')' // left section
+	//	| '(' qop=Qop infixExp=Infixexp ')' // right section
+	//	| qcon=CONID '{' fbinds+=Fbind+ '}' // labeled construction TODO qcon
+	// | aexp=Aexp '{' fbinds+=Fbind+ '}' // labeled update TODO resolve left recursion
+;
+
+Alt:
+	'__alt';
+
+Stmt:
+	'__stmt';
+
+Gcon hidden(WS, COMMENT, NCOMMENT):
+	'(' ')' | //
+	'[' ']' | //
+	'__(,{,})' | //
+	Qcon;
+
+Qual:
+	'__qual';
+
+Varop:
+	'__varop' VARSYM //
+	| ('`' VARID '`') //
+;
+
+Qop:
+	Qvarop | Qconop;
+
+Qvarop:
+	Qvarsym //
+	| '`' '__qvarid' '`' //
+;
+
+Qconop:
+	':' //
+	| '__gconsym' //
+	| '`' '__qconid' '`' //
+;
+
+Qvarid:
+	(Modid '.')? VARID;
+
+Qvarsym:
+	(Modid '.')? VARSYM;
+
+Qcon:
+	(Modid '.')? CONID | '__gconsym';
+
+Fbind:
+	'__fbind';
+
+Type hidden(WS):
+	btypes+=Atype+ ('->' projection=Type)?;
+
+Atype hidden(WS):
+	{Atype} //
+	simpleType=(CONID | VARID) //
+	| '(' tupleTypes+=Type (',' tupleTypes+=Type)* ')' //
+	| '[' listType=Type ']' //
+;
+
+//
+
+terminal LITERAL:
 	INTEGER | FLOAT | CHAR | HSTRING;
-
-terminal SPECIAL:
-	'(' | ')' | ',' | ';' | '[' | ']' | '`' | '{' | '}';
 
 whitespace hidden(WS):
 	COMMENT | NCOMMENT;
@@ -51,13 +237,6 @@ terminal NCOMMENT:
  */
 terminal fragment SYMBOL:
 	'!' | '#' | '$' | '%' | '&' | '*' | '+' | '.' | '/' | '<' | '=' | '>' | '?' | '@' | '\\' | '^' | '|' | '-' | '~';
-
-terminal RESERVEDOP:
-	'..' | ':' | '::' | '=' | '\\' | '|' | '<-' | '->' | '@' | '~' | '=>';
-
-terminal RESERVEDID:
-	'case' | 'class' | 'data' | 'default' | 'deriving' | 'do' | 'else' | 'if' | 'import' | 'in' | 'infix' | 'infixl' |
-	'infixr' | 'instance' | 'let' | 'module' | 'newtype' | 'of' | 'then' | 'type' | 'where' | '_';
 
 terminal fragment DIGIT:
 	'0'..'9' //
@@ -87,8 +266,9 @@ terminal CONID:
 	LARGE (SMALL | LARGE | DIGIT | '\'')* //
 ;
 
-modid:
-	CONID ('.' modid)* // module 
+// TODO causes warning on model generation
+Modid:
+	CONID ('.' Modid)* // module 
 ;
 
 /*
@@ -108,7 +288,7 @@ terminal INTEGER returns ecore::EBigInteger: // octal + hex
 	INT | '0x' (DIGIT | 'a'..'f' | 'A'..'F')+ | '0o' ('0'..'7')+;
 
 terminal FLOAT returns ecore::EBigDecimal:
-	(('+' | '-')? INT ('.' INT)? ('e' | 'E') ('+' | '-')? INT);
+	INT ('.' INT)? ('e' | 'E') ('+' | '-')? INT;
 
 terminal CHAR returns ecore::EChar: // escaping and special chars
 	'\'' ('\\' . | 'a'..'z' | 'A'..'Z') '\'';

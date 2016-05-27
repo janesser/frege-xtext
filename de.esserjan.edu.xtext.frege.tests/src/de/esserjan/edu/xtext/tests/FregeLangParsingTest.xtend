@@ -4,37 +4,356 @@
 package de.esserjan.edu.xtext.tests
 
 import com.google.inject.Inject
-import de.esserjan.edu.xtext.fregeLang.Program
+import de.esserjan.edu.xtext.fregeLang.Atype
+import de.esserjan.edu.xtext.fregeLang.Body
+import de.esserjan.edu.xtext.fregeLang.Constr
+import de.esserjan.edu.xtext.fregeLang.Datadecl
+import de.esserjan.edu.xtext.fregeLang.Decl
+import de.esserjan.edu.xtext.fregeLang.Impdecl
+import de.esserjan.edu.xtext.fregeLang.Impsymb
+import de.esserjan.edu.xtext.fregeLang.Module
+import de.esserjan.edu.xtext.fregeLang.Type
+import de.esserjan.edu.xtext.fregeLang.Typedecl
+import java.util.Optional
 import org.eclipse.xtext.junit4.InjectWith
 import org.eclipse.xtext.junit4.XtextRunner
 import org.eclipse.xtext.junit4.util.ParseHelper
+import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
 
 import static org.junit.Assert.*
+import de.esserjan.edu.xtext.fregeLang.Apat
+import de.esserjan.edu.xtext.fregeLang.Lexp
 
 @RunWith(XtextRunner)
 @InjectWith(FregeLangInjectorProvider)
 class FregeLangParsingTest {
 
-//	@Inject
-//	ParseHelper<Module> parseHelper;
-
 	@Inject
-	ParseHelper<Program> programParser;
+	ParseHelper<Module> moduleParser;
+
+	def Module parseAndPrint(String prg) {
+		val result = moduleParser.parse(prg)
+		println(result)
+		return result
+	}
+
+	static val HELLO_WORLD_PRG = '''
+		module HelloWorld where
+			
+		main = println "Hello world"
+		
+		-- further decls
+		a = 3
+		b = 2
+	'''
 
 	@Test
 	def void testHelloWorld() {
-		val result = programParser.parse('''
-		module First where
-		
-		main = println "Hello world"		''')
+		val result = parseAndPrint(HELLO_WORLD_PRG)
 
-		assertTrue(result.prg.contains('First'))
-//		assertEquals(
-//			"module 'First' expected.",
-//			"First",
-//			result.moduleId
-//		)
- 	}
+		assertEquals(
+			"module 'HelloWorld' expected.",
+			"HelloWorld",
+			result.moduleId
+		)
+
+		val mainDecl = result.body.findFirst [ Body b |
+			b instanceof Decl && (b as Decl).pat.lpat.apat.^var == 'main'
+		] as Decl
+
+	// TODO assertEquals("Incomplete expression.", '''println "Hello world"''', mainDecl.rhs.exp)
+	}
+
+	static val IMPORT_EXPORT_PRG = '''
+		module Complex.First (export1, export2) where
+		
+		import Module0		
+		import Imported.Module1 (import1, import2)
+		import qualified Imported.Module2 as M2 (import3, import4)
+		import Imported.Module3 hiding (hiding1, hiding2)
+	'''
+
+	@Test
+	def void testImportExport() {
+		val result = parseAndPrint(FregeLangParsingTest.IMPORT_EXPORT_PRG)
+
+		assertEquals(
+			"module 'Complex.First' expected.",
+			"Complex.First",
+			result.moduleId
+		)
+
+		println(" exports: " + result.exports)
+		assertTrue(
+			"export 'export2' expected.",
+			result.exports.contains('export2')
+		)
+
+		result.body.forEach [ Body b |
+			switch b {
+				Impdecl: {
+					println(b) //
+					println(" imports: " + b.imports) //
+					println(" hidings: " + b.hidings) //
+				}
+				default:
+					println(b)
+			}
+		]
+
+		assertTrue(
+			"import 'Module0' expected.",
+			result.body.exists[Body b|b instanceof Impdecl && (b as Impdecl).moduleId == 'Module0']
+		)
+
+		assertTrue("import 'Imported.Module1' including 'import2' expected.", result.body.exists [ Body b |
+			b instanceof Impdecl && (b as Impdecl).moduleId == 'Imported.Module1' //
+			&& (b as Impdecl).imports.exists[Impsymb s|s.symbolId == 'import2']
+		])
+
+		assertTrue(
+			"import 'Imported.Module2' with alias 'M2' expected.",
+			result.body.exists [ Body b |
+				b instanceof Impdecl && (b as Impdecl).moduleId == 'Imported.Module2' //
+				&& (b as Impdecl).alias == 'M2'
+			]
+		)
+
+		assertTrue("import 'Imported.Module1' hiding 'hiding2' expected.", result.body.exists [ Body b |
+			b instanceof Impdecl && (b as Impdecl).moduleId == 'Imported.Module3' //
+			&& (b as Impdecl).hidings.exists[Impsymb s|s.symbolId == 'hiding2']
+		])
+	}
+
+	static def <T> mkFindByName(Module module) {
+		val (String)=>Optional<T> findByName = [ String name |
+			Optional.ofNullable(module.body.findFirst [ Body b |
+				switch b {
+					Typedecl case b.simpleType == name:
+						true
+					Datadecl case b.simpleType == name:
+						true
+					Decl case b.funlhs != null && b.funlhs.^var == name:
+						true
+					Decl case b.pat != null && b.pat.lpat != null && b.pat.lpat.apat != null &&
+						b.pat.lpat.apat.^var == name:
+						true
+					default:
+						false
+				}
+			] as T)
+		]
+
+		return findByName
+	}
+
+	static val TOPDECL_PRG = '''
+		module Complex.Second where
+		
+		type Num = INT
+		
+		type Set = [INT]
+		
+		type Coord = (INT, LONG)
+		
+		type TypedString = Typed [Char]
+		
+		type TupleList = [(INT, LONG)]
+		
+		type IntEndomorphism = INT -> INT
+		
+		type ListTuple a = L a [L a]
+	'''
+
+	@Test
+	def void testTypeDecl() {
+		val result = parseAndPrint(TOPDECL_PRG)
+
+		val (String)=>Optional<Typedecl> findByName = mkFindByName(result)
+
+		val numDecl = findByName.apply('Num').get
+		assertTrue(
+			"Simple type 'Num' expected.",
+			numDecl.type.btypes.exists[Atype a|a.simpleType == 'INT']
+		)
+
+		val setDecl = findByName.apply('Set').get
+		assertTrue(
+			"List type 'Set' expected.",
+			setDecl.type.btypes.exists [ Atype a | //
+				a.listType.btypes.exists [ Atype lt | //
+					lt.simpleType == 'INT'
+				]
+			]
+		)
+
+		val coordDecl = findByName.apply('Coord').get
+		println(" coordType: " + coordDecl)
+		println("  tupleTypes: " + coordDecl.type.btypes.map[Atype t|t.tupleTypes.map[Type tt|tt.btypes]])
+		assertNotNull("Tuple type 'Coord' expected.", coordDecl)
+		assertTrue(
+			"Second argument type 'LONG' expected.", //
+			coordDecl.type.btypes.exists [ Atype a | //
+				a.tupleTypes.exists [ Type t | //
+					t.btypes.exists [ Atype at | //
+						at.simpleType == 'LONG'
+					]
+				]
+			]
+		)
+
+		val typedStringDecl = findByName.apply('TypedString')
+		assertTrue("Btype 'TypedString' expected.", typedStringDecl.isPresent)
+
+		val tupleListDecl = findByName.apply('TupleList')
+		assertTrue("Btype 'TupleList' expected.", tupleListDecl.isPresent)
+
+		val intEndomorphismDecl = findByName.apply('IntEndomorphism')
+		assertTrue("Btype 'IntEndomorphism' expected.", intEndomorphismDecl.isPresent)
+
+		val listTupleDecl = findByName.apply('ListTuple')
+		assertTrue("Btype 'ListTuple' expected.", listTupleDecl.isPresent)
+		assertEquals("Expected type var 'a'.", #['a'], listTupleDecl.get.typeVars)
+	}
+
+	/**
+	 * Examples from
+	 * <ul>
+	 *  <li>
+	 *   <a href="https://wiki.haskell.org/Algebraic_data_type">Algebraic data types</a>
+	 *  </li>
+	 *  <li>
+	 *   <a href="https://downloads.haskell.org/~ghc/7.8.4/docs/html/users_guide/deriving.html">7.5. Extensions to the "deriving" mechanism</a>
+	 *  </li>
+	 *  <li>
+	 *   <a href="https://wiki.haskell.org/Abstract_data_type">Abstract data type</a>
+	 *  </li>
+	 * </ul>
+	 */
+	val DATADECL_PRG = '''module Examples.Tree where
+		data Colors = Blue | Yellow | Red
+		data Pair1 = P INT FLOAT
+		data Pair2 = I INT | D FLOAT
+		
+		-- https://wiki.haskell.org/Algebraic_data_type
+		data Stree a = Tip | Node (Stree a) a (Stree a)
+		data Rose a = Rose a [Rose a]
+		
+		-- https://downloads.haskell.org/~ghc/7.8.4/docs/html/users_guide/deriving.html
+	  	data T0 f a = MkT0 a         deriving( Eq )
+		data T1 f a = MkT1 (f a)     deriving( Eq )
+	  	data T2 f a = MkT2 (f (f a)) deriving( Eq )
+	  	
+	  	-- https://wiki.haskell.org/Abstract_data_type
+	  	data Tree a = Nil 
+	  	            | Node { left  :: Tree a,
+	  	                     value :: a,
+	  	                     right :: Tree a }
+	'''
+
+	/**
+	 * TODO context testing left out, check <a href="https://prime.haskell.org/wiki/NoDatatypeContexts">Proposal: NoDatatypeContexts</a>.
+	 */
+	@Test
+	def void testDataDecl() {
+		val result = parseAndPrint(DATADECL_PRG)
+
+		val (String)=>Optional<Datadecl> findByName = mkFindByName(result)
+
+		val colorsType = findByName.apply('Colors')
+		assertTrue("Data type 'Colors' expected", colorsType.isPresent)
+		val colorsConstrs = (colorsType.get as Datadecl).constrs
+		assertEquals(3, colorsConstrs.size)
+		assertTrue(colorsConstrs.exists[Constr c|c.con == 'Blue'])
+		assertTrue(colorsConstrs.exists[Constr c|c.con == 'Yellow'])
+		assertTrue(colorsConstrs.exists[Constr c|c.con == 'Red'])
+
+		val pair1Type = findByName.apply('Pair1')
+		assertTrue("Data type 'Pair1' expected", pair1Type.isPresent)
+		val pair1Constrs = (pair1Type.get as Datadecl).constrs
+		assertEquals(1, pair1Constrs.size)
+		assertTrue(pair1Constrs.exists [ Constr c | //
+			c.con == 'P' && c.conTypes.size == 2 //
+			&& c.conTypes.get(0).simpleType == 'INT' //
+			&& c.conTypes.get(1).simpleType == 'FLOAT' //
+		])
+
+		val pair2Type = findByName.apply('Pair2')
+		assertTrue("Data type 'Pair2' expected", pair2Type.isPresent)
+		val pair2Constrs = (pair2Type.get as Datadecl).constrs
+		assertEquals(2, pair2Constrs.size)
+		assertTrue(pair2Constrs.exists[Constr c|c.con == 'I' && c.conTypes.exists[Atype at|at.simpleType == 'INT']])
+		assertTrue(pair2Constrs.exists[Constr c|c.con == 'D' && c.conTypes.exists[Atype at|at.simpleType == 'FLOAT']])
+
+		// data Stree a = Tip | Node (Stree a) a (Stree a)
+		val streeType = findByName.apply('Stree')
+		assertTrue("Data type 'Stree' expected", streeType.isPresent)
+		assertEquals("Expected type variable 'a'.", #['a'], streeType.get.typeVars)
+		val streeConstrs = streeType.get.constrs
+		assertTrue("Constr 'Tip' expected.", streeConstrs.exists[Constr c|c.con == 'Tip'])
+		assertTrue("Constr 'Node' expected.", streeConstrs.exists[Constr c|c.con == 'Node' && c.conTypes.size == 3])
+
+		// data Rose a = Rose a [Rose a]
+		val roseType = findByName.apply('Rose')
+		assertTrue("Data type 'Rose' expected", roseType.isPresent)
+		assertEquals("Expected two constructor arguments at 'Rose a [Rose a]'.", 2,
+			roseType.get.constrs.head.conTypes.size)
+
+		val t0Type = findByName.apply('T0')
+		assertTrue("Data type 'T0' expected", t0Type.isPresent)
+		assertEquals("Expected deriving class 'Eq'.", #['Eq'], t0Type.get.deriving.dclasses)
+
+		val t1Type = findByName.apply('T1')
+		assertTrue("Data type 'T1' expected", t1Type.isPresent)
+
+		val t2Type = findByName.apply('T2')
+		assertTrue("Data type 'T2' expected", t2Type.isPresent)
+
+		// Tree
+		val treeType = findByName.apply('Tree')
+		assertTrue("Data type 'Tree' expected.", treeType.isPresent)
+		val treeConstrs = treeType.get.constrs
+		assertEquals("Expected two constructors for 'Nil' and 'Node'.", 2, treeConstrs.size)
+		assertEquals("Expected three field declarations on 'Node' constructor.", 3, treeConstrs.last.fieldDecls.size)
+	}
+
+	val DECL_PRG = '''module Examples.Decl where
+			add x y = x + y
+			add z = z + 1
+			
+			add 2 2 = 4
+
+			a = 2
+			b = 3
+			
+			c = a + 4
+			d = add c 5
+			e = add d
+		 '''
+
+	@Test
+	def void testDecl() {
+		val result = parseAndPrint(DECL_PRG)
+
+		val (String)=>Optional<Decl> findByName = mkFindByName(result)
+
+		val addDecl = findByName.apply("add")
+		assertTrue("Expected at least one declaration of 'add' function", addDecl.isPresent)
+		val addFunlhs = addDecl.get.funlhs
+		assertEquals("Expected arguments 'x' and 'y'.", #['x', 'y'], addFunlhs.apats.map[Apat x|x.^var])
+
+		val addRhsInfixExp = addDecl.get.rhs.exp.infixExp
+		assertEquals("Expected lexp 'x'.", 'x', addRhsInfixExp.lexp.fexps.head.qvar)
+		assertEquals("Expected qop '+'.", '+', addRhsInfixExp.qop)
+		assertEquals("Expected rexp 'y'.", 'y', addRhsInfixExp.infixExp.lexp.fexps.head.qvar)
+
+
+		assertTrue("Expected declaration of 'a' constant", findByName.apply("a").isPresent)
+		assertTrue("Expected declaration of 'b' constant", findByName.apply("b").isPresent)
+		assertTrue("Expected declaration of 'c' constant", findByName.apply("c").isPresent)
+		assertTrue("Expected declaration of 'd' constant", findByName.apply("d").isPresent)
+		assertTrue("Expected declaration of 'e' constant", findByName.apply("e").isPresent)
+	}
 }

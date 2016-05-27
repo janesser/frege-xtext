@@ -1,0 +1,5 @@
+module Example where
+
+data Color = Red | Blue | Yellow
+
+a = 5
